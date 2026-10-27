@@ -26,6 +26,50 @@ alt_fill = PatternFill("solid", fgColor=light)
 note_fill = PatternFill("solid", fgColor=amber)
 total_fill = PatternFill("solid", fgColor="E3EEF1")
 
+POSTES = [
+    "Chiffre d'affaires — honoraires",
+    "Autres produits",
+    "Charges de personnel",
+    "Sous-traitance / freelances",
+    "Loyer et charges locatives",
+    "Marketing et acquisition",
+    "Informatique / outils",
+    "Autres frais généraux",
+]
+
+# Jan + Fév + Mars = Trimestre (budget et réalisé), vérifié ligne à ligne.
+# Mars conserve le cas « choc » pédagogique (CA −18k, freelances +4k).
+JANVIER = [
+    (88_000, 86_000, "Démarrage année : pipeline correct"),
+    (2_000, 1_900, ""),
+    (55_000, 55_200, ""),
+    (8_000, 9_000, "Pic ponctuel sur une mission"),
+    (4_500, 4_500, ""),
+    (3_000, 3_400, ""),
+    (1_800, 1_700, ""),
+    (2_700, 2_700, ""),
+]
+FEVRIER = [
+    (92_000, 83_000, "1 mission décalée en mars"),
+    (2_000, 1_800, ""),
+    (55_000, 56_300, "Formation interne (heures non facturables)"),
+    (8_000, 10_000, "Renfort sur livrable client clé"),
+    (4_500, 4_500, ""),
+    (3_000, 3_900, "Sponsoring événement métier"),
+    (1_800, 1_650, ""),
+    (2_700, 2_700, ""),
+]
+MARS = [
+    (100_000, 82_000, "2 missions reportées ; 1 client a réduit le volume"),
+    (2_000, 1_500, ""),
+    (55_000, 56_500, "Heures supp. sur un livrable urgent"),
+    (8_000, 12_000, "Remplacement d'un consultant malade"),
+    (4_500, 4_500, ""),
+    (3_000, 4_200, "Campagne LinkedIn non budgétée"),
+    (1_800, 1_750, ""),
+    (2_700, 2_400, ""),
+]
+
 
 def chf(cell):
     cell.number_format = "#,##0"
@@ -36,6 +80,91 @@ def chf(cell):
 def pct(cell):
     cell.number_format = "0.0%"
     cell.font = body
+
+
+def write_month_sheet(wb, name, period_label, rows, tip=None):
+    ws = wb.create_sheet(name)
+    ws["A1"] = "Alpes Conseil Sàrl — Budget vs réalisé"
+    ws["A1"].font = title_font
+    ws.merge_cells("A1:F1")
+    ws["A2"] = period_label
+    ws["A2"].font = Font(name="Calibri", italic=True, size=11, color=teal)
+
+    headers = [
+        "Poste",
+        "Budget CHF",
+        "Réalisé CHF",
+        "Écart CHF",
+        "Écart %",
+        "Commentaire métier (brut)",
+    ]
+    for col, h in enumerate(headers, 1):
+        cell = ws.cell(4, col, h)
+        cell.font = hdr_font
+        cell.fill = hdr_fill
+        cell.alignment = Alignment(horizontal="center")
+
+    for i, (poste, (bud, real, com)) in enumerate(zip(POSTES, rows)):
+        r = 5 + i
+        ws.cell(r, 1, poste).font = body
+        ws.cell(r, 2, bud)
+        chf(ws.cell(r, 2))
+        ws.cell(r, 3, real)
+        chf(ws.cell(r, 3))
+        ws.cell(r, 4, f"=C{r}-B{r}")
+        chf(ws.cell(r, 4))
+        ws.cell(r, 5, f"=IF(B{r}=0,0,D{r}/B{r})")
+        pct(ws.cell(r, 5))
+        ws.cell(r, 6, com).font = body
+        for col in range(1, 7):
+            ws.cell(r, col).border = thin
+            if i % 2:
+                ws.cell(r, col).fill = alt_fill
+
+    ws["A14"] = "Total produits"
+    ws["A15"] = "Total charges"
+    ws["A16"] = "Résultat d'exploitation (approx.)"
+    ws["B14"] = "=B5+B6"
+    ws["C14"] = "=C5+C6"
+    ws["B15"] = "=SUM(B7:B12)"
+    ws["C15"] = "=SUM(C7:C12)"
+    ws["B16"] = "=B14-B15"
+    ws["C16"] = "=C14-C15"
+    for r in (14, 15, 16):
+        ws.cell(r, 4, f"=C{r}-B{r}")
+        ws.cell(r, 5, f"=IF(B{r}=0,0,D{r}/B{r})")
+        for col in range(1, 6):
+            ws.cell(r, col).font = Font(name="Calibri", bold=True, size=11)
+            ws.cell(r, col).fill = total_fill
+            ws.cell(r, col).border = thin
+        chf(ws.cell(r, 2))
+        chf(ws.cell(r, 3))
+        chf(ws.cell(r, 4))
+        pct(ws.cell(r, 5))
+
+    if tip:
+        ws["A18"] = "Astuce atelier"
+        ws["A18"].font = section_font
+        ws["A19"] = tip
+        ws["A19"].fill = note_fill
+        ws["A19"].alignment = Alignment(wrap_text=True)
+        ws.merge_cells("A19:F20")
+
+    for i, w in enumerate([36, 14, 14, 12, 10, 52], 1):
+        ws.column_dimensions[get_column_letter(i)].width = w
+    return ws
+
+
+def assert_quarter_sums():
+    for i, poste in enumerate(POSTES):
+        jb, jr, _ = JANVIER[i]
+        fb, fr, _ = FEVRIER[i]
+        mb, mr, _ = MARS[i]
+        assert jb + fb + mb > 0
+        # Documented Q1 targets (used historically / for formateur)
+        q_bud = jb + fb + mb
+        q_real = jr + fr + mr
+        print(f"  {poste}: budget {q_bud:,} | réalisé {q_real:,}")
 
 
 # --- Consignes ---
@@ -50,7 +179,7 @@ ws["A4"] = (
     "Utilisez la feuille « Mars » (ou « Trimestre ») avec votre skill budget-variance-note. "
     "Demandez à Claude / Cursor : « Rédige la note d'écarts à partir de ce fichier ». "
     "La skill doit produire synthèse, tableau des 3 postes clés, questions métier "
-    "et une prochaine action."
+    "et une prochaine action. Janvier et Février permettent d’expliquer le trimestre."
 )
 ws["A4"].alignment = Alignment(wrap_text=True)
 ws.merge_cells("A4:D6")
@@ -59,10 +188,10 @@ ws["A8"] = "Déroulement suggéré (15–20 min)"
 ws["A8"].font = section_font
 steps = [
     "1. Ouvrez Create-Skill et créez la skill budget-variance-note (modèle fourni en atelier).",
-    "2. Ouvrez ce classeur — ne lisez que la feuille Mars pour le premier essai.",
-    "3. Lancez la skill sur les chiffres de Mars (sans regarder la feuille Corrigé).",
-    "4. Comparez votre note à la feuille Corrigé_formateur (ordre de grandeur, pas mot à mot).",
-    "5. Variante : refaites l'exercice avec la feuille Trimestre.",
+    "2. Ouvrez ce classeur — premier essai : feuille Mars seulement.",
+    "3. Lancez la skill sur les chiffres de Mars (sans regarder Corrige_formateur).",
+    "4. Comparez votre note à Corrige_formateur (ordre de grandeur, pas mot à mot).",
+    "5. Variante : feuille Trimestre (somme Janvier + Février + Mars), puis explorez les mois.",
 ]
 for i, s in enumerate(steps):
     ws.cell(9 + i, 1, s).font = body
@@ -74,99 +203,50 @@ ws["A16"] = (
     "Fichier pédagogique uniquement — pas de conseil fiscal ou financier."
 )
 ws["A16"].font = body
+ws["A18"] = "Cohérence des chiffres"
+ws["A18"].font = section_font
+ws["A19"] = (
+    "La feuille Trimestre additionne Janvier + Février + Mars (formules). "
+    "Modifier un mois met à jour le trimestre."
+)
+ws["A19"].font = body
 ws.column_dimensions["A"].width = 100
 
-# --- Mars ---
-m = wb.create_sheet("Mars")
-m["A1"] = "Alpes Conseil Sàrl — Budget vs réalisé"
-m["A1"].font = title_font
-m.merge_cells("A1:F1")
-m["A2"] = "Période : mars 2026  |  Comparaison : budget mensuel vs réalisé"
-m["A2"].font = Font(name="Calibri", italic=True, size=11, color=teal)
+print("Vérification Jan+Fév+Mars :")
+assert_quarter_sums()
 
-headers = [
-    "Poste",
-    "Budget CHF",
-    "Réalisé CHF",
-    "Écart CHF",
-    "Écart %",
-    "Commentaire métier (brut)",
-]
-for col, h in enumerate(headers, 1):
-    cell = m.cell(4, col, h)
-    cell.font = hdr_font
-    cell.fill = hdr_fill
-    cell.alignment = Alignment(horizontal="center")
-
-rows = [
-    ("Chiffre d'affaires — honoraires", 100_000, 82_000,
-     "2 missions reportées ; 1 client a réduit le volume"),
-    ("Autres produits", 2_000, 1_500, ""),
-    ("Charges de personnel", 55_000, 56_500, "Heures supp. sur un livrable urgent"),
-    ("Sous-traitance / freelances", 8_000, 12_000, "Remplacement d'un consultant malade"),
-    ("Loyer et charges locatives", 4_500, 4_500, ""),
-    ("Marketing et acquisition", 3_000, 4_200, "Campagne LinkedIn non budgétée"),
-    ("Informatique / outils", 1_800, 1_750, ""),
-    ("Autres frais généraux", 2_700, 2_400, ""),
-]
-
-for i, (poste, bud, real, com) in enumerate(rows):
-    r = 5 + i
-    m.cell(r, 1, poste).font = body
-    m.cell(r, 2, bud)
-    chf(m.cell(r, 2))
-    m.cell(r, 3, real)
-    chf(m.cell(r, 3))
-    m.cell(r, 4, f"=C{r}-B{r}")
-    chf(m.cell(r, 4))
-    m.cell(r, 5, f"=IF(B{r}=0,0,D{r}/B{r})")
-    pct(m.cell(r, 5))
-    m.cell(r, 6, com).font = body
-    for col in range(1, 7):
-        m.cell(r, col).border = thin
-        if i % 2:
-            m.cell(r, col).fill = alt_fill
-
-m["A14"] = "Total produits"
-m["A15"] = "Total charges"
-m["A16"] = "Résultat d'exploitation (approx.)"
-m["B14"] = "=B5+B6"
-m["C14"] = "=C5+C6"
-m["B15"] = "=SUM(B7:B12)"
-m["C15"] = "=SUM(C7:C12)"
-m["B16"] = "=B14-B15"
-m["C16"] = "=C14-C15"
-for r in (14, 15, 16):
-    m.cell(r, 4, f"=C{r}-B{r}")
-    m.cell(r, 5, f"=IF(B{r}=0,0,D{r}/B{r})")
-    for col in range(1, 6):
-        m.cell(r, col).font = Font(name="Calibri", bold=True, size=11)
-        m.cell(r, col).fill = total_fill
-        m.cell(r, col).border = thin
-    chf(m.cell(r, 2))
-    chf(m.cell(r, 3))
-    chf(m.cell(r, 4))
-    pct(m.cell(r, 5))
-
-m["A18"] = "Astuce atelier"
-m["A18"].font = section_font
-m["A19"] = (
-    "La skill doit garder au plus 3 postes qui expliquent l'essentiel de l'écart. "
-    "Les commentaires métier sont des indices bruts — la note ne doit pas les recopier tels quels."
+write_month_sheet(
+    wb,
+    "Janvier",
+    "Période : janvier 2026  |  Comparaison : budget mensuel vs réalisé",
+    JANVIER,
 )
-m["A19"].fill = note_fill
-m["A19"].alignment = Alignment(wrap_text=True)
-m.merge_cells("A19:F20")
+write_month_sheet(
+    wb,
+    "Fevrier",
+    "Période : février 2026  |  Comparaison : budget mensuel vs réalisé",
+    FEVRIER,
+)
+write_month_sheet(
+    wb,
+    "Mars",
+    "Période : mars 2026  |  Comparaison : budget mensuel vs réalisé",
+    MARS,
+    tip=(
+        "La skill doit garder au plus 3 postes qui expliquent l'essentiel de l'écart. "
+        "Les commentaires métier sont des indices bruts — la note ne doit pas les recopier tels quels."
+    ),
+)
 
-for i, w in enumerate([36, 14, 14, 12, 10, 52], 1):
-    m.column_dimensions[get_column_letter(i)].width = w
-
-# --- Trimestre ---
+# --- Trimestre = somme des 3 mois ---
 t = wb.create_sheet("Trimestre")
 t["A1"] = "Alpes Conseil Sàrl — Budget vs réalisé Q1 2026"
 t["A1"].font = title_font
 t.merge_cells("A1:E1")
-t["A2"] = "Période : janvier–mars 2026  |  Variante pour un 2e essai"
+t["A2"] = (
+    "Période : janvier–mars 2026  |  "
+    "Budget et réalisé = Janvier + Fevrier + Mars (formules)"
+)
 t["A2"].font = Font(name="Calibri", italic=True, size=11, color=teal)
 
 for col, h in enumerate(
@@ -176,22 +256,12 @@ for col, h in enumerate(
     cell.font = hdr_font
     cell.fill = hdr_fill
 
-q_rows = [
-    ("Chiffre d'affaires — honoraires", 280_000, 251_000),
-    ("Autres produits", 6_000, 5_200),
-    ("Charges de personnel", 165_000, 168_000),
-    ("Sous-traitance / freelances", 24_000, 31_000),
-    ("Loyer et charges locatives", 13_500, 13_500),
-    ("Marketing et acquisition", 9_000, 11_500),
-    ("Informatique / outils", 5_400, 5_100),
-    ("Autres frais généraux", 8_100, 7_800),
-]
-for i, (poste, bud, real) in enumerate(q_rows):
+for i, poste in enumerate(POSTES):
     r = 5 + i
     t.cell(r, 1, poste).font = body
-    t.cell(r, 2, bud)
+    t.cell(r, 2, f"=Janvier!B{r}+Fevrier!B{r}+Mars!B{r}")
     chf(t.cell(r, 2))
-    t.cell(r, 3, real)
+    t.cell(r, 3, f"=Janvier!C{r}+Fevrier!C{r}+Mars!C{r}")
     chf(t.cell(r, 3))
     t.cell(r, 4, f"=C{r}-B{r}")
     chf(t.cell(r, 4))
@@ -222,6 +292,16 @@ for r in (14, 15, 16):
     chf(t.cell(r, 3))
     chf(t.cell(r, 4))
     pct(t.cell(r, 5))
+
+t["A18"] = "Contrôle"
+t["A18"].font = section_font
+t["A19"] = (
+    "Chaque ligne Budget / Réalisé est la somme des trois feuilles mensuelles. "
+    "Ex. CA honoraires Q1 : budget 280'000 | réalisé 251'000."
+)
+t["A19"].fill = note_fill
+t["A19"].alignment = Alignment(wrap_text=True)
+t.merge_cells("A19:E20")
 
 for i, w in enumerate([36, 14, 14, 12, 10], 1):
     t.column_dimensions[get_column_letter(i)].width = w
@@ -258,9 +338,17 @@ c["A18"].font = section_font
 c["A19"] = (
     "Mettre à jour le forecast avril avec les missions reportées + plafond freelance."
 )
-c["A21"] = "Ne montrez pas cette feuille aux participants avant la fin de l'exercice."
-c["A21"].fill = note_fill
-c["A21"].font = Font(name="Calibri", bold=True, size=11)
+c["A21"] = "Cohérence trimestre"
+c["A21"].font = section_font
+c["A22"] = (
+    "Janvier + Février + Mars = Trimestre. Q1 CA : 280'000 budget / 251'000 réalisé "
+    "(écart −29'000). Le trou se creuse surtout en mars (−18'000) après un février déjà faible."
+)
+c["A22"].alignment = Alignment(wrap_text=True)
+c.merge_cells("A22:B23")
+c["A25"] = "Ne montrez pas cette feuille aux participants avant la fin de l'exercice."
+c["A25"].fill = note_fill
+c["A25"].font = Font(name="Calibri", bold=True, size=11)
 c.column_dimensions["A"].width = 95
 
 out = Path(__file__).resolve().parent / "Budget_vs_Realise_AlpesConseil.xlsx"

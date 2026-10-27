@@ -16,7 +16,7 @@ Créez une skill hyper simple qui transforme un tableau budget / réalisé en no
 2. Ouvrez le classeur ; travaillez d'abord la feuille **Mars** (ignorez **Corrige_formateur**).
 3. Lancez : *« Rédige la note d'écarts à partir de ce fichier »*.
 4. Comparez à **Corrige_formateur** (ordre de grandeur, pas mot à mot).
-5. Variante : feuille **Trimestre**.
+5. Variante : feuille **Trimestre** (= Janvier + Février + Mars), puis les mois.
 
 ## Prompt type pour Create-Skill
 
